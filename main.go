@@ -22,7 +22,7 @@ func main() {
 	case "new":
 		new(args)
 	case "run":
-		fmt.Print("run")
+		run()
 	case "build":
 		fmt.Print("build")
 	default:
@@ -38,23 +38,6 @@ func new(args []string) {
 	// err := os.Mkdir(args[1], 0777)
 	// handleMkdirErr(err)
 
-	// err = os.Chdir(args[1])
-	// if err != nil {
-	// 	fmtFataln("error changing into dir %s: %v", args[1], err)
-	// }
-	// err = os.Mkdir("backend", 0777)
-	// handleMkdirErr(err)
-	// err = os.Mkdir("frontend", 0777)
-	// handleMkdirErr(err)
-
-	// files := make([]string, 0)
-	// fs.WalkDir(embedded, "embedded", func(path string, d fs.DirEntry, err error) error {
-	// if strings.Count(path, "/") < 2 {
-	// files = append(files, path)
-	// }
-	// return nil
-	// })
-
 	dir, err := fs.ReadDir(embedded, "embedded")
 	if err != nil {
 		fmtFataln("could not read embedded directory: %v", err)
@@ -66,6 +49,12 @@ func new(args []string) {
 
 	// TODO: research go embedding and place embedded files into a directory
 	// 			and copy them from the go binary
+}
+
+func run() {
+	// compile svelte, js, and ts files
+	// generate go code for endpoint
+	// file watching to recompile
 }
 
 func copyDir(f fs.FS, src, dest string) error {
