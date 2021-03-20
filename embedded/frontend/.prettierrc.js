@@ -28,23 +28,3 @@ module.exports = {
     }
   ]
 }
-
-// export const useTabs = false
-// export const printWidth = 80
-// export const tabWidth = 2
-// export const semi = false
-// export const trailingComma = 'none'
-// export const singleQuote = true
-// export const plugins = [require('prettier-plugin-svelte')]
-// export const svelteSortOrder = 'options-scripts-markup-styles'
-// export const svelteStrictMode = false
-// export const svelteBracketNewLine = false
-// export const svelteAllowShorthand = true
-// export const svelteIndentScriptAndStyle = true
-
-// export const overrides = [
-//   {
-//     files: '**/*.ts',
-//     options: { parser: 'typescript' },
-//   },
-// ]

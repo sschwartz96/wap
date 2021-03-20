@@ -53,6 +53,10 @@ func new(args []string) {
 
 func run() {
 	// compile svelte, js, and ts files
+	err := build()
+	if err != nil {
+		fmtFataln("build error: %v", err)
+	}
 	// generate go code for endpoint
 	// file watching to recompile
 }

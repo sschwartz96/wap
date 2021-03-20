@@ -1,5 +1,13 @@
 package main
 
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
 // conains the necessary informatino to build a Svelte script
 type SvelteBuild struct {
 	Name          string
@@ -35,6 +43,23 @@ export default app;`
 // outdir: ./public/build
 
 func build() error {
-	//
+	// list all the routes and build them into there own javascript
+	routes := []string{}
+	routePath := "frontend\\src\\routes\\"
+	// check if path exists
+	if _, err := os.Stat(routePath); os.IsNotExist(err) {
+		return fmt.Errorf("could not find frontend/src/routes folder are you in the proper directory?")
+	}
+	// get the list of routes and append them to are string slice
+	err := filepath.Walk(routePath, func(path string, info fs.FileInfo, err error) error {
+		if !info.IsDir() {
+			routes = append(routes, strings.Replace(path, routePath, "", 1))
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("received error while walking path: %v", err)
+	}
+	fmt.Println("routes: ", routes)
 	return nil
 }
