@@ -1,1 +1,6 @@
-embedded/frontend/node_modules
+# ignore downloaded dependencies
+embedded/node_modules
+
+# ignore binaries
+wap
+wap.exe
