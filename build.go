@@ -4,17 +4,24 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/template"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 // conains the necessary informatino to build a Svelte script
 type SvelteBuild struct {
-	Name          string
-	SvelteLoc     string // location where the script lies
-	BuildLoc      string // location where svelte route will be built
-	EntryPointLoc string // location where esbuild script lies
+	Name      string
+	Path      string // route path as in form of url
+	SvelteLoc string // location where the script lies
+	BuildLoc  string // location where svelte route will be built
+
+	BuildScriptLoc string // location with build script lies
+	EntryPointLoc  string // location where esbuild script lies
 }
 
 var buildScriptTmpl = `const sveltePreprocess = require('svelte-preprocess');
@@ -25,7 +32,7 @@ esbuild
   .build({
     entryPoints: ['{{.EntryPointLoc}}'],
     bundle: true,
-    outdir: '../backend/public/build',
+    outdir: 'backend/public/build',
     plugins: [
       esbuildSvelte({
         preprocess: sveltePreprocess(),
@@ -34,33 +41,35 @@ esbuild
   })
   .catch(() => process.exit(1));`
 
-var esBuildEntryTmpl = `import {{.Name}} from '{{.SvelteLoc}}';
+var esBuildEntryTmpl = `import {{.Name}} from '../{{.SvelteLoc}}';
 const app = new App({
   target: document.body,
   props: {},
 });
 export default app;`
 
-// outdir: ./public/build
-
+// build looks for svelte files in frontend/src/routes and compiles them
 func build() error {
 	// list all the routes and build them into there own javascript
 	buildObjs := []SvelteBuild{}
-	routePath := "frontend\\src\\routes\\"
+	routePath := filepath.Clean("frontend/src/routes")
+
 	// check if path exists
 	if _, err := os.Stat(routePath); os.IsNotExist(err) {
-		return fmt.Errorf("could not find frontend/src/routes folder are you in the proper directory?")
+		return fmt.Errorf("Could not find frontend/src/routes folder are you in the proper directory?")
 	}
 	// get the list of routes and append them to are string slice
 	err := filepath.Walk(routePath, func(path string, info fs.FileInfo, err error) error {
 		if !info.IsDir() {
-			name := getNameOfPath(path, routePath)
-			underscoreName := strings.ReplaceAll(name, "\\", "_") + ".js"
+			fmt.Println("path: ", path)
+			pName := getNameOfPath(path, routePath)
+			underscoreName := strings.ToLower(strings.ReplaceAll(pName, "/", "_")) + ".js"
 			buildObjs = append(buildObjs, SvelteBuild{
-				Name:          name,
-				SvelteLoc:     path,
-				EntryPointLoc: "tmp\\esbuild_" + name + ".js",
-				BuildLoc:      "backend\\js\\" + underscoreName + ".js",
+				Name:           getNameFromPath(path),
+				SvelteLoc:      path,
+				BuildScriptLoc: filepath.Clean("tmp/build_" + underscoreName + ".js"),
+				EntryPointLoc:  filepath.Clean("tmp/" + underscoreName),
+				BuildLoc:       "backend/public/build/" + underscoreName + ".js",
 			})
 		}
 		return nil
@@ -70,22 +79,25 @@ func build() error {
 	}
 
 	err = os.Mkdir("tmp", 0770)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "file exists") {
 		return fmt.Errorf("Error creating tmp build directory: %v", err)
 	}
+	wg := sync.WaitGroup{}
 	// compile each route and place in respective directory in public/js
 	for i := range buildObjs {
-		fmt.Println("got here")
-		func(b SvelteBuild) {
-			fmt.Println("building obj: ", b)
+		wg.Add(1)
+		go func(b SvelteBuild) {
+			fmt.Println("Building Svelte Object:")
+			spew.Dump(b)
 			err := compileSvelte(b)
 			if err != nil {
 				fmt.Printf("error compiling svelte build object:\n\tname: %s\n\tmessage: %v", b.Name, err)
 			}
+			wg.Done()
 		}(buildObjs[i])
 	}
-
-	//err = os.RemoveAll("tmp")
+	wg.Wait()
+	err = os.RemoveAll("tmp")
 	if err != nil {
 		return fmt.Errorf("Error removing tmp build directory: %v", err)
 	}
@@ -94,8 +106,8 @@ func build() error {
 
 // compileSvelte compiles the svelte build object
 func compileSvelte(sb SvelteBuild) error {
-	// write build script to tmp/ folder
-	err := createScriptFile("tmp\\build_"+sb.Name+".js", buildScriptTmpl, sb)
+	// write build scripts to tmp/ folder
+	err := createScriptFile(sb.BuildScriptLoc, buildScriptTmpl, sb)
 	if err != nil {
 		return err
 	}
@@ -105,8 +117,15 @@ func compileSvelte(sb SvelteBuild) error {
 	}
 
 	// exec build script
+	cmd := exec.Command("node", sb.BuildScriptLoc)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Error running build script, output:\n%s\nerror:\n%v", string(output), err)
+	}
 
-	// capture and return errors
+	if len(output) > 0 {
+		fmt.Printf("Build Output: %s\n", string(output))
+	}
 	return nil
 }
 
@@ -129,8 +148,16 @@ func createScriptFile(fileName, templateString string, sb SvelteBuild) error {
 
 // getNameOfPath removes pwd path and .svelte to return the logical part of the path
 func getNameOfPath(s string, pwd string) string {
-	return strings.Replace(
-		strings.Replace(s, pwd, "", 1),
-		".svelte", "", 1,
-	)
+	return strings.Split(
+		strings.Replace(s, pwd+"/", "", 1),
+		".",
+	)[0]
+}
+
+// getNameFromPath returns the name of the svelte object
+func getNameFromPath(s string) string {
+	return strings.Split(
+		filepath.Base(s),
+		".",
+	)[0]
 }

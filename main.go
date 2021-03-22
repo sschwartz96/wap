@@ -8,7 +8,11 @@ import (
 	"strings"
 )
 
-//go:embed embedded/*
+//go:embed embedded/backend
+//go:embed embedded/frontend
+//go:embed embedded/README.md
+//go:embed embedded/package.json
+
 var embedded embed.FS
 
 func main() {
@@ -88,7 +92,7 @@ func handleMkdirErr(err error) {
 }
 
 func printHelp() {
-	fmt.Println("'wap' usage:\n\n \tnew:\tcreate new wap program\n \trun:\tcompiles and runs wap program on specified port\n \tbuild:\tbuilds the program into a single executable in the out folder\n ")
+	fmt.Println("'wap' usage:\n\tnew:\tcreate new wap program\n \trun:\tcompiles and runs wap program on specified port\n \tbuild:\tbuilds the program into a single executable in the out folder\n ")
 }
 
 func fmtFataln(msg string, a ...interface{}) {

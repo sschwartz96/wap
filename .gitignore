@@ -4,3 +4,6 @@ embedded/node_modules
 # ignore binaries
 wap
 wap.exe
+
+embedded/pnpm-lock.yaml
+embedded/backend/public/build
