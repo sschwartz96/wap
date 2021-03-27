@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"text/template"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 // conains the necessary informatino to build a Svelte script
@@ -50,9 +48,12 @@ export default app;`
 
 // build looks for svelte files in frontend/src/routes and compiles them
 func build() error {
+	// go ahead and remove temp directory
+	os.RemoveAll("tmp")
+
 	// list all the routes and build them into there own javascript
 	buildObjs := []SvelteBuild{}
-	routePath := filepath.Clean("frontend/src/routes")
+	routePath := "frontend/src/routes"
 
 	// check if path exists
 	if _, err := os.Stat(routePath); os.IsNotExist(err) {
@@ -61,14 +62,14 @@ func build() error {
 	// get the list of routes and append them to are string slice
 	err := filepath.Walk(routePath, func(path string, info fs.FileInfo, err error) error {
 		if !info.IsDir() {
-			fmt.Println("path: ", path)
+			path = strings.ReplaceAll(path, "\\", "/") // have to do this for windows :(
 			pName := getNameOfPath(path, routePath)
-			underscoreName := strings.ToLower(strings.ReplaceAll(pName, "/", "_")) + ".js"
+			underscoreName := strings.ToLower(strings.ReplaceAll(pName, "/", "_"))
 			buildObjs = append(buildObjs, SvelteBuild{
-				Name:           getNameFromPath(path),
+				Name:           filepath.Clean(getNameFromPath(path)),
 				SvelteLoc:      path,
-				BuildScriptLoc: filepath.Clean("tmp/build_" + underscoreName + ".js"),
-				EntryPointLoc:  filepath.Clean("tmp/" + underscoreName),
+				BuildScriptLoc: "tmp/build_" + underscoreName + ".js",
+				EntryPointLoc:  "tmp/" + underscoreName + ".js",
 				BuildLoc:       "backend/public/build/" + underscoreName + ".js",
 			})
 		}
@@ -88,7 +89,7 @@ func build() error {
 		wg.Add(1)
 		go func(b SvelteBuild) {
 			fmt.Println("Building Svelte Object:")
-			spew.Dump(b)
+			//spew.Dump(b)
 			err := compileSvelte(b)
 			if err != nil {
 				fmt.Printf("error compiling svelte build object:\n\tname: %s\n\tmessage: %v", b.Name, err)
@@ -131,7 +132,12 @@ func compileSvelte(sb SvelteBuild) error {
 
 func createScriptFile(fileName, templateString string, sb SvelteBuild) error {
 	tempFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0770)
-	defer tempFile.Close()
+	defer func() {
+		err := tempFile.Close()
+		if err != nil {
+			fmt.Printf("error clsing temp file names: %s\nerror msg: %v\n", tempFile.Name(), err)
+		}
+	}()
 	if err != nil {
 		return fmt.Errorf("Error creating script file name: %s\nerror: %v", fileName, err)
 	}
@@ -156,8 +162,5 @@ func getNameOfPath(s string, pwd string) string {
 
 // getNameFromPath returns the name of the svelte object
 func getNameFromPath(s string) string {
-	return strings.Split(
-		filepath.Base(s),
-		".",
-	)[0]
+	return strings.ReplaceAll(strings.Split(filepath.Base(s), ".")[0], "\\", "/")
 }
