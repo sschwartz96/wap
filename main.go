@@ -52,7 +52,7 @@ func new(args []string) {
 	}
 
 	// TODO: research go embedding and place embedded files into a directory
-	// 			and copy them from the go binary
+	// 		ll prepare a purchase order and email it to	and copy them from the go binary
 }
 
 func run() {
@@ -62,6 +62,7 @@ func run() {
 		fmtFataln("build error: %v", err)
 	}
 	// generate go code for endpoint
+
 	// file watching to recompile
 }
 

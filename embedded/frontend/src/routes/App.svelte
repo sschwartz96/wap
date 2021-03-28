@@ -6,7 +6,7 @@
 </script>
 
 <div>Hello {world}!</div>
-<button onclick={() => countUp()}>Please click me!</button>
+<button on:click={() => countUp()}>Please click me!</button>
 <span>Count: {$count}</span>
 
 <style>
