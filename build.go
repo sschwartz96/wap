@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"text/template"
 )
 
@@ -93,11 +92,15 @@ func build() error {
 	if err != nil && !strings.Contains(err.Error(), "file exists") {
 		return fmt.Errorf("Error creating tmp build directory: %v", err)
 	}
-	wg := sync.WaitGroup{}
+
+	type compileInfo struct {
+		Index int
+		NoCSS bool
+	}
+	buildChan := make(chan compileInfo, len(pages))
 	// compile each route and place in respective directory in public/js
 	for i := range pages {
-		wg.Add(1)
-		go func(b Page) {
+		go func(b Page, index int) {
 			//fmt.Println("Building Svelte Object:")
 			//spew.Dump(b)
 			err := compileSvelte(b)
@@ -106,13 +109,21 @@ func build() error {
 			}
 			// need to check if css was generated
 			if _, err = os.Stat("backend" + b.CSS); os.IsNotExist(err) {
-				fmt.Println("css location does not exist: ", "backend"+b.CSS)
-				b.CSS = ""
+				//fmt.Println("css location does not exist: ", "backend"+b.CSS)
+				buildChan <- compileInfo{Index: index, NoCSS: true}
+				return
 			}
-			wg.Done()
-		}(pages[i])
+			buildChan <- compileInfo{Index: index, NoCSS: false}
+		}(pages[i], i)
 	}
-	wg.Wait()
+	for j := 0; j < len(pages); j++ {
+		select {
+		case info := <-buildChan:
+			if info.NoCSS {
+				pages[info.Index].CSS = ""
+			}
+		}
+	}
 	err = os.RemoveAll("tmp")
 	if err != nil {
 		return fmt.Errorf("Error removing tmp build directory: %v", err)
@@ -166,7 +177,7 @@ func createScriptFile(fileName, templateString string, sb Page) error {
 	defer func() {
 		err := tempFile.Close()
 		if err != nil {
-			fmt.Printf("error clsing temp file names: %s\nerror msg: %v\n", tempFile.Name(), err)
+			fmt.Printf("error closing temp file names: %s\nerror msg: %v\n", tempFile.Name(), err)
 		}
 	}()
 	if err != nil {
