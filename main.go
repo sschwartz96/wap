@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 //go:embed embedded/backend
@@ -56,14 +62,74 @@ func new(args []string) {
 }
 
 func run() {
-	// compile svelte, js, and ts files
+	// compile svelte, js, and ts files. then generate go code
 	err := build()
 	if err != nil {
 		fmtFataln("build error: %v", err)
 	}
-	// generate go code for endpoint
+
+	// start server
+	rebuildChan := make(chan bool)
+	stopwatch := time.Now()
+	fmt.Println("starting server...")
+	go func() {
+		for {
+			sCmd := startApp()
+			<-rebuildChan // pauses go routine
+			stopwatch = time.Now()
+			err := syscall.Kill(-sCmd.Process.Pid, syscall.SIGKILL) // negative Pid used to kill process group
+			if err != nil {
+				fmt.Println("error killing app server process:", err)
+			}
+			fmt.Println("rebuilding...")
+			err = build()
+			if err != nil {
+				fmtFataln("build error: %v", err)
+			}
+			fmt.Printf("built in: %f seconds", time.Now().Sub(stopwatch).Seconds())
+			sCmd.Wait()
+		}
+	}()
 
 	// file watching to recompile
+	fw, err := fsnotify.NewWatcher()
+	if err != nil {
+		fmtFataln("error creating file watcher:", err)
+	}
+	filepath.WalkDir("./", func(path string, d fs.DirEntry, err error) error {
+		if d.IsDir() {
+			fw.Add(path)
+		}
+		return nil
+	})
+
+	elapsed := time.Now()
+	for {
+		event := <-fw.Events
+		// TODO: revisit this when build times exceed a second???
+		if time.Now().Sub(elapsed) < time.Second {
+			continue
+		}
+		fmt.Println("file system event:", event.String())
+		elapsed = time.Now()
+
+		if event.Op != fsnotify.Chmod {
+			rebuildChan <- true
+		}
+	}
+}
+
+func startApp() *exec.Cmd {
+	appRun := exec.Command("go", "run", ".")
+	appRun.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // allows us to send a syscall to kill process
+	appRun.Dir = "backend"
+	appRun.Stdout = os.Stdout
+	appRun.Stderr = os.Stderr
+	err := appRun.Start()
+	if err != nil {
+		fmtFataln("error starting go server:", err)
+	}
+	return appRun
 }
 
 func copyDir(f fs.FS, src, dest string) error {

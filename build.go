@@ -157,7 +157,7 @@ func compileSvelte(sb Page) error {
 	err = createScriptFile(sb.EntryPointLoc, esBuildEntryTmpl, sb)
 	if err != nil {
 		return err
-	}
+	
 
 	// exec build script
 	cmd := exec.Command("node", sb.BuildScriptLoc)
