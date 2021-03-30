@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -75,9 +74,9 @@ func run() {
 	go func() {
 		for {
 			sCmd := startApp()
-			<-rebuildChan // pauses go routine
+			<-rebuildChan // pauses go routine to wait for a rebuild
 			stopwatch = time.Now()
-			err := syscall.Kill(-sCmd.Process.Pid, syscall.SIGKILL) // negative Pid used to kill process group
+			err := sCmd.Process.Kill()
 			if err != nil {
 				fmt.Println("error killing app server process:", err)
 			}
@@ -120,12 +119,17 @@ func run() {
 }
 
 func startApp() *exec.Cmd {
-	appRun := exec.Command("go", "run", ".")
-	appRun.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // allows us to send a syscall to kill process
+	appBuild := exec.Command("go", "build", "-o", "app", ".")
+	appBuild.Dir = "backend"
+	err := appBuild.Run()
+	if err != nil {
+		fmtFataln("error building app executable", err)
+	}
+	appRun := exec.Command("./app")
 	appRun.Dir = "backend"
 	appRun.Stdout = os.Stdout
 	appRun.Stderr = os.Stderr
-	err := appRun.Start()
+	err = appRun.Start()
 	if err != nil {
 		fmtFataln("error starting go server:", err)
 	}
