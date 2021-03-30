@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -119,13 +120,17 @@ func run() {
 }
 
 func startApp() *exec.Cmd {
-	appBuild := exec.Command("go", "build", "-o", "app", ".")
+	buildName := "app"
+	if runtime.GOOS == "windows" {
+		buildName = "app.exe"
+	}
+	appBuild := exec.Command("go", "build", "-o", buildName, ".")
 	appBuild.Dir = "backend"
 	err := appBuild.Run()
 	if err != nil {
 		fmtFataln("error building app executable", err)
 	}
-	appRun := exec.Command("./app")
+	appRun := exec.Command("./" + buildName)
 	appRun.Dir = "backend"
 	appRun.Stdout = os.Stdout
 	appRun.Stderr = os.Stderr
