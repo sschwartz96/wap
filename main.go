@@ -34,7 +34,7 @@ func main() {
 	case "run":
 		run()
 	case "build":
-		fmt.Print("build")
+		build()
 	default:
 		printHelp()
 	}
@@ -63,7 +63,7 @@ func new(args []string) {
 
 func run() {
 	// compile svelte, js, and ts files. then generate go code
-	err := build()
+	err := compile()
 	if err != nil {
 		fmtFataln("build error: %v", err)
 	}
@@ -74,7 +74,8 @@ func run() {
 	fmt.Println("starting server...")
 	go func() {
 		for {
-			sCmd := startApp()
+			execName := buildApp("./")
+			sCmd := startApp(execName)
 			<-rebuildChan // pauses go routine to wait for a rebuild
 			stopwatch = time.Now()
 			err := sCmd.Process.Kill()
@@ -82,7 +83,7 @@ func run() {
 				fmt.Println("error killing app server process:", err)
 			}
 			fmt.Println("rebuilding...")
-			err = build()
+			err = compile()
 			if err != nil {
 				fmtFataln("build error: %v", err)
 			}
@@ -119,22 +120,39 @@ func run() {
 	}
 }
 
-func startApp() *exec.Cmd {
+func build() {
+	elapsed := time.Now()
+	err := compile()
+	if err != nil {
+		fmtFataln("error compiling:", err)
+	}
+	execName := buildApp("../")
+	fmt.Printf("built executable named: %s in %f seconds\n", execName, time.Now().Sub(elapsed).Seconds())
+}
+
+// buildApp builds the go code into single binary
+// locPath is the location path where to store it
+// returns the name of the executable. Needs to have .exe for windows
+func buildApp(locPath string) string {
 	buildName := "app"
 	if runtime.GOOS == "windows" {
 		buildName = "app.exe"
 	}
-	appBuild := exec.Command("go", "build", "-o", buildName, ".")
+	appBuild := exec.Command("go", "build", "-o", locPath+buildName, ".")
 	appBuild.Dir = "backend"
 	err := appBuild.Run()
 	if err != nil {
 		fmtFataln("error building app executable", err)
 	}
-	appRun := exec.Command("./" + buildName)
+	return buildName
+}
+
+func startApp(execName string) *exec.Cmd {
+	appRun := exec.Command("./" + execName)
 	appRun.Dir = "backend"
 	appRun.Stdout = os.Stdout
 	appRun.Stderr = os.Stderr
-	err = appRun.Start()
+	err := appRun.Start()
 	if err != nil {
 		fmtFataln("error starting go server:", err)
 	}

@@ -16,7 +16,7 @@ func main() {
 	r := httprouter.New()
 
 	// DO NOT CHANGE, WHERE THE SVELTE CODE GETS REGISTERED
-	register(r)
+	registerWAPGen(r)
 
 	err := http.ListenAndServe(":"+strconv.Itoa(port), r)
 	if err != nil {
