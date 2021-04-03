@@ -124,10 +124,10 @@ func compile() error {
 			}
 		}
 	}
-	// err = os.RemoveAll("tmp")
-	// if err != nil {
-	// 	return fmt.Errorf("Error removing tmp build directory: %v", err)
-	// }
+	err = os.RemoveAll("tmp")
+	if err != nil {
+		return fmt.Errorf("Error removing tmp build directory: %v", err)
+	}
 
 	// generate go code
 	wapGoPath := "./backend/wap_gen.go"

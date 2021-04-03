@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,7 +47,25 @@ func new(args []string) {
 		fmt.Println("please use 'wap new {name} to create a new project'")
 		return
 	}
-	err := os.Mkdir(args[1], 0777)
+
+	// check go version
+	goCheckCmd := exec.Command("go", "version")
+	goCheckOut, err := goCheckCmd.Output()
+	if err != nil {
+		fmtFataln("error getting command output:", err)
+	}
+	minor, err := strconv.Atoi(strings.Split(string(goCheckOut), ".")[1])
+	if err != nil {
+		os.RemoveAll(args[1])
+		fmtFatalf("error finding go minor version: %v\n", err)
+	}
+	if minor < 16 {
+		os.RemoveAll(args[1])
+		fmtFatalf("error go minor version %d, need at least 1.16\n", minor)
+	}
+
+	// create directory
+	err = os.Mkdir(args[1], 0777)
 	if err != nil {
 		if strings.Contains(err.Error(), "file exists") {
 			fmtFatalf("directory with the name %s already exists\n", args[1])
@@ -80,14 +99,17 @@ func new(args []string) {
 			fmt.Printf("could not open embedded file: %s\n\t with error: %v\n", newPath, err)
 			return nil
 		}
-		written, err := io.Copy(dst, src)
+		_, err = io.Copy(dst, src)
 		if err != nil {
 			fmt.Printf("error copying embed file: %s\n\tto destination: %s\n\terror:%v\n", embedPath, newPath, err)
 			return nil
 		}
-		fmt.Printf("successfully wrote: %d bytes\n", written)
 		return nil
 	})
+
+	fmt.Println("Success!")
+	fmt.Println("  Please install javascript dependencies in root folder with \"npm install\"")
+	fmt.Println("  and initialize backend with \"go mod init\" followed by \"go mod tidy\"")
 }
 
 func run() {
