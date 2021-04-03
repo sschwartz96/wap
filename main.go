@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -45,20 +46,48 @@ func new(args []string) {
 		fmt.Println("please use 'wap new {name} to create a new project'")
 		return
 	}
-	// err := os.Mkdir(args[1], 0777)
-	// handleMkdirErr(err)
-
-	dir, err := fs.ReadDir(embedded, "embedded")
+	err := os.Mkdir(args[1], 0777)
 	if err != nil {
-		fmtFataln("could not read embedded directory: %v", err)
+		if strings.Contains(err.Error(), "file exists") {
+			fmtFatalf("directory with the name %s already exists\n", args[1])
+		} else {
+			handleMkdirErr(err)
+		}
 	}
 
-	for d := range dir {
-		fmt.Println("", dir[d].Name())
-	}
+	fs.WalkDir(embedded, "embedded", func(embedPath string, d fs.DirEntry, err error) error {
+		// don't need to copy the embedded directory itself
+		if embedPath == "embedded" || d == nil {
+			return nil
+		}
 
-	// TODO: research go embedding and place embedded files into a directory
-	// 		ll prepare a purchase order and email it to	and copy them from the go binary
+		newPath := args[1] + "/" + strings.Replace(embedPath, "embedded/", "", 1)
+		if d.IsDir() {
+			err := os.Mkdir(newPath, 0777)
+			if err != nil {
+				fmt.Println("error creating directory:", err)
+			}
+			return nil
+		}
+		// is a file:
+		dst, err := os.Create(newPath)
+		if err != nil {
+			fmt.Printf("could not create file: %s\n\t with error: %v\n", newPath, err)
+			return nil
+		}
+		src, err := embedded.Open(embedPath)
+		if err != nil {
+			fmt.Printf("could not open embedded file: %s\n\t with error: %v\n", newPath, err)
+			return nil
+		}
+		written, err := io.Copy(dst, src)
+		if err != nil {
+			fmt.Printf("error copying embed file: %s\n\tto destination: %s\n\terror:%v\n", embedPath, newPath, err)
+			return nil
+		}
+		fmt.Printf("successfully wrote: %d bytes\n", written)
+		return nil
+	})
 }
 
 func run() {
@@ -191,5 +220,10 @@ func printHelp() {
 
 func fmtFataln(msg string, a ...interface{}) {
 	fmt.Printf(msg+"\n", a...)
+	os.Exit(1)
+}
+
+func fmtFatalf(msg string, a ...interface{}) {
+	fmt.Printf(msg, a...)
 	os.Exit(1)
 }
