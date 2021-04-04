@@ -65,7 +65,7 @@ func new(args []string) {
 	}
 
 	// create directory
-	err = os.Mkdir(args[1], 0777)
+	err = os.Mkdir(args[1], 0770)
 	if err != nil {
 		if strings.Contains(err.Error(), "file exists") {
 			fmtFatalf("directory with the name %s already exists\n", args[1])
@@ -82,7 +82,7 @@ func new(args []string) {
 
 		newPath := args[1] + "/" + strings.Replace(embedPath, "embedded/", "", 1)
 		if d.IsDir() {
-			err := os.Mkdir(newPath, 0777)
+			err := os.Mkdir(newPath, 0770)
 			if err != nil {
 				fmt.Println("error creating directory:", err)
 			}
@@ -114,32 +114,45 @@ func new(args []string) {
 
 func run() {
 	// compile svelte, js, and ts files. then generate go code
-	err := compile()
+	pages, err := compile(true)
 	if err != nil {
 		fmtFataln("build error: %v", err)
 	}
 
 	// start server
-	rebuildChan := make(chan bool)
+	buildOnlyFrontendChan := make(chan bool)
 	stopwatch := time.Now()
-	fmt.Println("starting server...")
 	go func() {
+		fmt.Println("starting server...")
+		execName := buildApp("./")
+		sCmd := startApp(execName)
 		for {
-			execName := buildApp("./")
-			sCmd := startApp(execName)
-			<-rebuildChan // pauses go routine to wait for a rebuild
+			buildOnlyFrontend := <-buildOnlyFrontendChan // pauses go routine to wait for a rebuild
 			stopwatch = time.Now()
+
+			if buildOnlyFrontend {
+				fmt.Println("rebuilding frontend...")
+				pages, err = compileFrontEnd()
+				if err != nil {
+					fmt.Println("error rebuilding only frontend:", err)
+				}
+				fmt.Printf("built frontend in: %f seconds\n", time.Now().Sub(stopwatch).Seconds())
+				continue
+			}
+
+			// build both backend
 			err := sCmd.Process.Kill()
 			if err != nil {
 				fmt.Println("error killing app server process:", err)
 			}
-			fmt.Println("rebuilding...")
-			err = compile()
+			fmt.Println("rebuilding backend...")
+			err = generateGoCode(true, pages)
 			if err != nil {
-				fmtFataln("build error: %v", err)
+				fmtFataln("error generating go code: %v", err)
 			}
-			fmt.Printf("built in: %f seconds", time.Now().Sub(stopwatch).Seconds())
-			sCmd.Wait()
+			execName := buildApp("./")
+			sCmd = startApp(execName)
+			fmt.Printf("built backend in: %f seconds\n", time.Now().Sub(stopwatch).Seconds())
 		}
 	}()
 
@@ -162,18 +175,17 @@ func run() {
 		if time.Now().Sub(elapsed) < time.Second {
 			continue
 		}
-		fmt.Println("file system event:", event.String())
 		elapsed = time.Now()
 
 		if event.Op != fsnotify.Chmod {
-			rebuildChan <- true
+			buildOnlyFrontendChan <- strings.HasPrefix(event.Name, "frontend/")
 		}
 	}
 }
 
 func build() {
 	elapsed := time.Now()
-	err := compile()
+	_, err := compile(false)
 	if err != nil {
 		fmtFataln("error compiling:", err)
 	}

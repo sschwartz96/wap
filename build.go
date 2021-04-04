@@ -10,7 +10,7 @@ import (
 	"text/template"
 )
 
-// conains the necessary informatino to build a Svelte script
+// contains the necessary informatino to build a Svelte script
 type Page struct {
 	Title   string
 	URLPath string // route path as in form of url
@@ -23,6 +23,12 @@ type Page struct {
 	BuildLoc       string // location where svelte route will be built
 	BuildScriptLoc string // location with build script lies
 	EntryPointLoc  string // location where esbuild script lies
+}
+
+// contains the information for build
+type BuildInfo struct {
+	Run   bool // run or bool
+	Pages []Page
 }
 
 var buildScriptTmpl = `const sveltePreprocess = require('svelte-preprocess');
@@ -51,17 +57,33 @@ export default app;`
 
 // compile looks for svelte files in frontend/src/routes and compiles them
 // then generates appropriate go code to run the server
-func compile() error {
+func compile(run bool) ([]Page, error) {
+	// compile frontend
+	pages, err := compileFrontEnd()
+	if err != nil {
+		return nil, err
+	}
+
+	// generate go code
+	err = generateGoCode(run, pages)
+	if err != nil {
+		return nil, err
+	}
+
+	return pages, nil
+}
+
+func compileFrontEnd() ([]Page, error) {
 	// go ahead and remove temp directory
 	os.RemoveAll("tmp")
 
-	// list all the routes and build them into there own javascript
+	// list all the routes and build them into their own javascript
 	pages := []Page{}
 	routePath := "frontend/src/routes"
 
 	// check if path exists
 	if _, err := os.Stat(routePath); os.IsNotExist(err) {
-		return fmt.Errorf("Could not find frontend/src/routes folder are you in the proper directory?")
+		return nil, fmt.Errorf("Could not find frontend/src/routes folder are you in the proper directory?")
 	}
 	// get the list of routes and append them to are string slice
 	err := filepath.Walk(routePath, func(path string, info fs.FileInfo, err error) error {
@@ -85,12 +107,12 @@ func compile() error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("received error while walking path: %v", err)
+		return nil, fmt.Errorf("received error while walking path: %v", err)
 	}
 
 	err = os.Mkdir("tmp", 0770)
 	if err != nil && !strings.Contains(err.Error(), "file exists") {
-		return fmt.Errorf("Error creating tmp build directory: %v", err)
+		return nil, fmt.Errorf("Error creating tmp build directory: %v", err)
 	}
 
 	type compileInfo struct {
@@ -126,25 +148,9 @@ func compile() error {
 	}
 	err = os.RemoveAll("tmp")
 	if err != nil {
-		return fmt.Errorf("Error removing tmp build directory: %v", err)
+		return nil, fmt.Errorf("Error removing tmp build directory: %v", err)
 	}
-
-	// generate go code
-	wapGoPath := "./backend/wap_gen.go"
-	tmplObj, err := template.New("wap_gen").Delims("[[", "]]").Parse(wapGenTemplate)
-	if err != nil {
-		return fmt.Errorf("error parsing wap_gen.go template text, error: %v", err)
-	}
-	os.Remove(wapGoPath)
-	wapGenFile, err := os.Create(wapGoPath)
-	if err != nil {
-		return fmt.Errorf("error creating wap_go.go file, error: %v", err)
-	}
-	err = tmplObj.Execute(wapGenFile, pages)
-	if err != nil {
-		return fmt.Errorf("error executing wap_go.go template, error: %v", err)
-	}
-	return nil
+	return pages, nil
 }
 
 // compileSvelte compiles the svelte build object
@@ -190,6 +196,28 @@ func createScriptFile(fileName, templateString string, sb Page) error {
 	err = scriptTemplate.Execute(tempFile, sb)
 	if err != nil {
 		return fmt.Errorf("Error executing template name: %s\nerror: %v", fileName, err)
+	}
+	return nil
+}
+
+func generateGoCode(run bool, pages []Page) error {
+	wapGoPath := "./backend/wap_gen.go"
+	tmplObj, err := template.New("wap_gen").Delims("[[", "]]").Parse(wapGenTemplate)
+	if err != nil {
+		return fmt.Errorf("error parsing wap_gen.go template text, error: %v", err)
+	}
+	os.Remove(wapGoPath)
+	wapGenFile, err := os.Create(wapGoPath)
+	if err != nil {
+		return fmt.Errorf("error creating wap_go.go file, error: %v", err)
+	}
+	buildInfo := BuildInfo{
+		Run:   run,
+		Pages: pages,
+	}
+	err = tmplObj.Execute(wapGenFile, &buildInfo)
+	if err != nil {
+		return fmt.Errorf("error executing wap_go.go template, error: %v", err)
 	}
 	return nil
 }
@@ -241,7 +269,7 @@ type App struct {
 var wapApp = &App{
 	Pages: []Page{
 		// list pages
-		[[ range . ]]
+		[[ range .Pages ]]
 		{
 			Title:   "[[ .Title ]]",
 			URLPath: "[[ .URLPath ]]",
@@ -264,8 +292,12 @@ func registerWAPGen(r *httprouter.Router) {
 	}
 
 	// serve files
-	assetHandler := &AssetHandler{fs: embedded}
-	r.ServeFiles("/public/build/*filepath", http.FS(assetHandler))
+	[[ if .Run ]]
+		r.ServeFiles("/public/build/*filepath", http.Dir("./public/build"))
+	[[ else ]]
+		assetHandler := &AssetHandler{fs: embedded}
+		r.ServeFiles("/public/build/*filepath", http.FS(assetHandler))
+	[[ end ]]
 }
 
 // AssetHandler is used to load files at ./public/build/*
