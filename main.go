@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -178,6 +179,12 @@ func run() {
 		elapsed = time.Now()
 
 		if event.Op != fsnotify.Chmod {
+			spew.Println("event path:", event.Name)
+			if event.Op == fsnotify.Create && strings.HasPrefix(event.Name, "frontend/src/routes") {
+				buildOnlyFrontendChan <- true
+				buildOnlyFrontendChan <- false
+				continue
+			}
 			buildOnlyFrontendChan <- strings.HasPrefix(event.Name, "frontend/")
 		}
 	}
