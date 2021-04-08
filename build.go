@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 )
@@ -27,8 +28,9 @@ type Page struct {
 
 // contains the information for build
 type BuildInfo struct {
-	Run   bool // run or bool
-	Pages []Page
+	Run             bool // run or bool
+	Pages           []Page
+	WebsocketScript string // only populated if running dev server
 }
 
 var buildScriptTmpl = `const sveltePreprocess = require('svelte-preprocess');
@@ -57,7 +59,7 @@ export default app;`
 
 // compile looks for svelte files in frontend/src/routes and compiles them
 // then generates appropriate go code to run the server
-func compile(run bool) ([]Page, error) {
+func compile(run, dev bool) ([]Page, error) {
 	// compile frontend
 	pages, err := compileFrontEnd()
 	if err != nil {
@@ -65,7 +67,7 @@ func compile(run bool) ([]Page, error) {
 	}
 
 	// generate go code
-	err = generateGoCode(run, pages)
+	err = generateGoCode(run, dev, pages)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +93,6 @@ func compileFrontEnd() ([]Page, error) {
 			path = strings.ReplaceAll(path, "\\", "/") // have to do this for windows :(
 			pName := getNameOfPath(path, routePath)
 			underscoreName := strings.ToLower(strings.ReplaceAll(pName, "/", "_"))
-			fmt.Println("pname:", pName)
 			pages = append(pages, Page{
 				Title:   filepath.Clean(getNameFromPath(path)),
 				URLPath: "/" + strings.Replace(strings.ToLower(pName), "index", "", 1),
@@ -200,7 +201,7 @@ func createScriptFile(fileName, templateString string, sb Page) error {
 	return nil
 }
 
-func generateGoCode(run bool, pages []Page) error {
+func generateGoCode(run, dev bool, pages []Page) error {
 	wapGoPath := "./backend/wap_gen.go"
 	tmplObj, err := template.New("wap_gen").Delims("[[", "]]").Parse(wapGenTemplate)
 	if err != nil {
@@ -214,6 +215,9 @@ func generateGoCode(run bool, pages []Page) error {
 	buildInfo := BuildInfo{
 		Run:   run,
 		Pages: pages,
+	}
+	if dev {
+		buildInfo.WebsocketScript = websocketScript
 	}
 	err = tmplObj.Execute(wapGenFile, &buildInfo)
 	if err != nil {
@@ -324,6 +328,7 @@ func createHandler(pageData Page) httprouter.Handle {
 var htmlTemplate =` + "`" + `<html>
 <head>
   <meta charset="utf-8">
+  [[ .WebsocketScript ]]
 
   <title>{{ .Title }}</title>
 
@@ -337,3 +342,14 @@ var htmlTemplate =` + "`" + `<html>
 <body>
 </body>
  </html>` + "`"
+
+var websocketScript = `<script>
+	const socket = new WebSocket('ws://localhost:` + strconv.Itoa(websocketPort) + `');
+	socket.addEventListener('open', function(event) {
+		console.log('socket opened');
+		socket.send('hello world');
+	})
+	socket.addEventListener('message', function(event) {
+		console.log('Message from server: ', event.data);
+	})
+</script>`

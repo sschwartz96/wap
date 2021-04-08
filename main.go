@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -25,17 +24,22 @@ import (
 var embedded embed.FS
 
 func main() {
-	args := os.Args[1:]
+	// check pre-reqs
+	checkGoVersion()
+
+	args := os.Args
 	if len(args) == 0 {
 		printHelp()
 		return
 	}
 
-	switch args[0] {
+	flags := parseFlags(os.Args[1:])
+
+	switch flags.cmd {
 	case "new":
-		new(args)
+		new(flags)
 	case "run":
-		run()
+		run(flags)
 	case "build":
 		build()
 	default:
@@ -43,13 +47,9 @@ func main() {
 	}
 }
 
-func new(args []string) {
-	if len(args) < 2 {
-		fmt.Println("please use 'wap new {name} to create a new project'")
-		return
-	}
-
-	// check go version
+// checkGoVersion checks for minimum minor go version of > 16
+// exits program with error message
+func checkGoVersion() {
 	goCheckCmd := exec.Command("go", "version")
 	goCheckOut, err := goCheckCmd.Output()
 	if err != nil {
@@ -57,19 +57,24 @@ func new(args []string) {
 	}
 	minor, err := strconv.Atoi(strings.Split(string(goCheckOut), ".")[1])
 	if err != nil {
-		os.RemoveAll(args[1])
 		fmtFatalf("error finding go minor version: %v\n", err)
 	}
 	if minor < 16 {
-		os.RemoveAll(args[1])
 		fmtFatalf("error go minor version %d, need at least 1.16\n", minor)
+	}
+}
+
+func new(flags *cmdFlags) {
+	if len(flags.cmd) == 0 {
+		fmt.Println("please use 'wap new {name} to create a new project'")
+		return
 	}
 
 	// create directory
-	err = os.Mkdir(args[1], 0770)
+	err := os.Mkdir(flags.name, 0770)
 	if err != nil {
 		if strings.Contains(err.Error(), "file exists") {
-			fmtFatalf("directory with the name %s already exists\n", args[1])
+			fmtFatalf("directory with the name %s already exists\n", flags.name)
 		} else {
 			handleMkdirErr(err)
 		}
@@ -81,7 +86,7 @@ func new(args []string) {
 			return nil
 		}
 
-		newPath := args[1] + "/" + strings.Replace(embedPath, "embedded/", "", 1)
+		newPath := flags.name + "/" + strings.Replace(embedPath, "embedded/", "", 1)
 		if d.IsDir() {
 			err := os.Mkdir(newPath, 0770)
 			if err != nil {
@@ -113,11 +118,25 @@ func new(args []string) {
 	fmt.Println("  and initialize backend with \"go mod init\" followed by \"go mod tidy\"")
 }
 
-func run() {
+func run(flags *cmdFlags) {
+	devFlag := flags.getValue("dev") != nil
+
 	// compile svelte, js, and ts files. then generate go code
-	pages, err := compile(true)
+	pages, err := compile(true, devFlag)
 	if err != nil {
 		fmtFataln("build error: %v", err)
+	}
+
+	// start websocket server
+	if devFlag {
+		go func() {
+			fmt.Println("starting websocket server")
+			wsServer := newWebsocketServer()
+			err := wsServer.start()
+			if err != nil {
+				fmt.Println("error starting websocket server:", err)
+			}
+		}()
 	}
 
 	// start server
@@ -147,7 +166,7 @@ func run() {
 				fmt.Println("error killing app server process:", err)
 			}
 			fmt.Println("rebuilding backend...")
-			err = generateGoCode(true, pages)
+			err = generateGoCode(true, devFlag, pages)
 			if err != nil {
 				fmtFataln("error generating go code: %v", err)
 			}
@@ -179,7 +198,6 @@ func run() {
 		elapsed = time.Now()
 
 		if event.Op != fsnotify.Chmod {
-			spew.Println("event path:", event.Name)
 			if event.Op == fsnotify.Create && strings.HasPrefix(event.Name, "frontend/src/routes") {
 				buildOnlyFrontendChan <- true
 				buildOnlyFrontendChan <- false
@@ -192,7 +210,7 @@ func run() {
 
 func build() {
 	elapsed := time.Now()
-	_, err := compile(false)
+	_, err := compile(false, false)
 	if err != nil {
 		fmtFataln("error compiling:", err)
 	}
@@ -229,23 +247,6 @@ func startApp(execName string) *exec.Cmd {
 	return appRun
 }
 
-func copyDir(f fs.FS, src, dest string) error {
-	err := os.Mkdir(dest, 0770)
-	if err != nil {
-		return err
-	}
-	return fs.WalkDir(f, src, func(path string, d fs.DirEntry, err error) error {
-		newPath := strings.Replace(path, src, dest, 1)
-		if d.IsDir() {
-			err := os.Mkdir(newPath, 0770)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
 func handleMkdirErr(err error) {
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists.") {
@@ -256,7 +257,11 @@ func handleMkdirErr(err error) {
 }
 
 func printHelp() {
-	fmt.Println("'wap' usage:\n\tnew:\tcreate new wap program\n \trun:\tcompiles and runs wap program on specified port\n \tbuild:\tbuilds the program into a single executable in the out folder\n ")
+	wap := "'wap' usage:"
+	new := "\n\tnew:\tcreate new wap program\n "
+	run := "\trun:\tcompiles and runs wap program on specified port\n "
+	build := "\tbuild:\tbuilds the program into a single executable in the out folder\n "
+	fmt.Println(wap + new + run + build)
 }
 
 func fmtFataln(msg string, a ...interface{}) {
@@ -267,4 +272,47 @@ func fmtFataln(msg string, a ...interface{}) {
 func fmtFatalf(msg string, a ...interface{}) {
 	fmt.Printf(msg, a...)
 	os.Exit(1)
+}
+
+func parseFlags(args []string) *cmdFlags {
+	cmdFlags := &cmdFlags{
+		args:  args,
+		flags: map[string]*string{},
+	}
+	for i := range args {
+		value := ""
+		arg := args[i]
+
+		if strings.HasPrefix(arg, "--") {
+			arg = strings.TrimPrefix(arg, "--")
+		} else if strings.HasPrefix(arg, "-") {
+			arg = strings.TrimPrefix(arg, "-")
+			if strings.Contains(arg, "=") {
+				split := strings.Split(arg, "=")
+				arg = split[0]
+				value = split[1]
+			} else if i+1 < len(args) {
+				value = args[i]
+				i++
+			}
+		} else if cmdFlags.cmd == "" {
+			cmdFlags.cmd = arg
+		} else {
+			cmdFlags.name = arg
+		}
+
+		cmdFlags.flags[arg] = &value
+	}
+	return cmdFlags
+}
+
+type cmdFlags struct {
+	args  []string
+	flags map[string]*string // use string pointer to signify if the value does not exist
+	cmd   string             // the command used not a flag
+	name  string             // the name used to create a new project or build a binary
+}
+
+func (f *cmdFlags) getValue(arg string) *string {
+	return f.flags[arg]
 }
