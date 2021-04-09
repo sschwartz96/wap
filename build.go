@@ -347,9 +347,15 @@ var websocketScript = `<script>
 	const socket = new WebSocket('ws://localhost:` + strconv.Itoa(websocketPort) + `');
 	socket.addEventListener('open', function(event) {
 		console.log('socket opened');
-		socket.send('hello world');
+		window.onbeforeunload = function(){
+			console.log('closing socket');
+			socket.send('close');
+		}
 	})
 	socket.addEventListener('message', function(event) {
 		console.log('Message from server: ', event.data);
+		if (event.data.includes('update')) {
+			location.reload();
+		}
 	})
 </script>`

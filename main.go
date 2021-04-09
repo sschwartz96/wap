@@ -128,13 +128,20 @@ func run(flags *cmdFlags) {
 	}
 
 	// start websocket server
+	refreshChan := make(chan bool)
 	if devFlag {
 		go func() {
 			fmt.Println("starting websocket server")
 			wsServer := newWebsocketServer()
-			err := wsServer.start()
-			if err != nil {
-				fmt.Println("error starting websocket server:", err)
+			go func() {
+				err := wsServer.start()
+				if err != nil {
+					fmt.Println("error starting websocket server:", err)
+				}
+			}()
+			for {
+				<-refreshChan
+				wsServer.wsConnHandler.sendUpdateMsg()
 			}
 		}()
 	}
@@ -157,6 +164,9 @@ func run(flags *cmdFlags) {
 					fmt.Println("error rebuilding only frontend:", err)
 				}
 				fmt.Printf("built frontend in: %f seconds\n", time.Now().Sub(stopwatch).Seconds())
+				if devFlag {
+					refreshChan <- true
+				}
 				continue
 			}
 
@@ -173,6 +183,9 @@ func run(flags *cmdFlags) {
 			execName := buildApp("./")
 			sCmd = startApp(execName)
 			fmt.Printf("built backend in: %f seconds\n", time.Now().Sub(stopwatch).Seconds())
+			if devFlag {
+				refreshChan <- true
+			}
 		}
 	}()
 
