@@ -60,7 +60,6 @@ func newWSConnHandler() *wsConnHandler {
 func (w *wsConnHandler) registerConn(conn *websocket.Conn) {
 	w.mutex.Lock()
 	key := fmt.Sprintf("%p", conn) // just use the pointer location as unique key
-	fmt.Println("our key is:", key)
 	w.connections[key] = conn
 	w.mutex.Unlock()
 	go func() {
@@ -68,11 +67,9 @@ func (w *wsConnHandler) registerConn(conn *websocket.Conn) {
 			_, msgBytes, err := conn.ReadMessage()
 			msg := string(msgBytes)
 			if err != nil {
-				fmt.Println("error reading websocket message:", err)
 				w.closeConnection(key)
 				return
 			}
-			fmt.Println("received message from websocket client:", msg)
 			if msg == "close" {
 				w.closeConnection(key)
 				return
@@ -83,12 +80,9 @@ func (w *wsConnHandler) registerConn(conn *websocket.Conn) {
 
 func (w *wsConnHandler) closeConnection(key string) {
 	w.mutex.Lock()
-	fmt.Println("closing websocket connection with key:", key)
 	if w.connections[key] != nil {
 		w.connections[key].Close()
 		w.connections[key] = nil
-	} else { // only for debug
-		fmt.Println("already closed")
 	}
 	w.mutex.Unlock()
 }
@@ -102,7 +96,6 @@ func (w *wsConnHandler) sendUpdateMsg() {
 		}
 		err := conn.WriteMessage(1, []byte("update"))
 		if err != nil {
-			fmt.Println("error sending update message to websocket connection:\n\t", err)
 			w.closeConnection(key)
 		}
 	}
