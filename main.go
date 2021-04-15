@@ -205,12 +205,20 @@ func run(flags *cmdFlags) {
 	for {
 		event := <-fw.Events
 		// TODO: revisit this when build times exceed a second???
+		// put fw.Events in a separate go routine and allow events to pass through
+		// until preivous build is complete. Another channel???
 		if time.Now().Sub(elapsed) < time.Second {
 			continue
 		}
 		elapsed = time.Now()
 
 		if event.Op != fsnotify.Chmod {
+			if event.Op == fsnotify.Create {
+				// add the new directory to the file watcher
+				if fileInfo, _ := os.Stat(event.Name); fileInfo.IsDir() {
+					fw.Add(event.Name)
+				}
+			}
 			if event.Op == fsnotify.Create && strings.HasPrefix(event.Name, "frontend/src/routes") {
 				buildOnlyFrontendChan <- true
 				buildOnlyFrontendChan <- false
