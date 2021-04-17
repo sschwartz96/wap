@@ -181,6 +181,8 @@ func compileSvelte(sb Page) error {
 	return nil
 }
 
+// createScriptFile creates a javascript file with the given fileName(includes path)
+// templateString(build script) and page data
 func createScriptFile(fileName, templateString string, sb Page) error {
 	tempFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0770)
 	defer func() {
@@ -203,6 +205,7 @@ func createScriptFile(fileName, templateString string, sb Page) error {
 	return nil
 }
 
+// generateGoCode creates go code based on the run and dev flags and an array of type Page
 func generateGoCode(run, dev bool, pages []Page) error {
 	wapGoPath := "./backend/wap_gen.go"
 	tmplObj, err := template.New("wap_gen").Delims("[[", "]]").Parse(wapGenTemplate)
@@ -287,6 +290,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -330,7 +334,11 @@ func registerWAPGen(r *httprouter.Router) {
 		log.Fatalf("Could not parse html template, error: %v", err)
 	}
 	for _, page := range wapApp.Pages {
-		r.GET(page.URLPath, createHandler(page))
+		path := page.URLPath
+		if strings.Contains(page.Title, "$slug") {
+			path = strings.Replace(page.URLPath, "$slug", ":name", 1)
+		}
+		r.GET(path, createHandler(page))
 	}
 
 	// serve files

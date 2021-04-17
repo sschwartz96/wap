@@ -261,10 +261,12 @@ func buildApp(locPath string) string {
 		buildName = "app.exe"
 	}
 	appBuild := exec.Command("go", "build", "-o", locPath+buildName, ".")
+	appBuild.Stderr = os.Stderr
+	appBuild.Stdout = os.Stdout
 	appBuild.Dir = "backend"
 	err := appBuild.Run()
 	if err != nil {
-		fmtFataln("error building app executable", err)
+		fmtFataln("error building app executable:", err)
 	}
 	return buildName
 }
