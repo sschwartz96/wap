@@ -213,18 +213,31 @@ func run(flags *cmdFlags) {
 		elapsed = time.Now()
 
 		if event.Op != fsnotify.Chmod {
-			if event.Op == fsnotify.Create {
+
+			switch event.Op {
+			// new file or directory has been created
+			case fsnotify.Create:
 				// add the new directory to the file watcher
 				if fileInfo, _ := os.Stat(event.Name); fileInfo.IsDir() {
 					fw.Add(event.Name)
 				}
-			}
-			if event.Op == fsnotify.Create && strings.HasPrefix(event.Name, "frontend/src/routes") {
+
+				// if a file in the routes dir created then we must recompile backend
+				if strings.HasPrefix(event.Name, "frontend/src/routes") {
+					buildOnlyFrontendChan <- true
+					buildOnlyFrontendChan <- false
+					break
+				}
+			case fsnotify.Remove:
+				os.RemoveAll("backend/public/build")
 				buildOnlyFrontendChan <- true
 				buildOnlyFrontendChan <- false
-				continue
+				break
+
+			default:
+				// determines whether or not to compile frontend or backend
+				buildOnlyFrontendChan <- strings.HasPrefix(event.Name, "frontend/")
 			}
-			buildOnlyFrontendChan <- strings.HasPrefix(event.Name, "frontend/")
 		}
 	}
 }

@@ -42,6 +42,7 @@ esbuild
   .build({
     entryPoints: ['{{.EntryPointLoc}}'],
     bundle: true,
+	minify: true,
     outdir: 'backend/public/build',
     plugins: [
       esbuildSvelte({
