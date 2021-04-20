@@ -184,6 +184,7 @@ func run(flags *cmdFlags) {
 			sCmd = startApp(execName)
 			fmt.Printf("built backend in: %f seconds\n", time.Now().Sub(stopwatch).Seconds())
 			if devFlag {
+				time.Sleep(time.Millisecond * 1000) // wait a little for the app to start
 				refreshChan <- true
 			}
 		}
@@ -217,6 +218,7 @@ func run(flags *cmdFlags) {
 			switch event.Op {
 			// new file or directory has been created
 			case fsnotify.Create:
+				fmt.Println("file created! ", event.Name, " | ", event.Op)
 				// add the new directory to the file watcher
 				if fileInfo, _ := os.Stat(event.Name); fileInfo.IsDir() {
 					fw.Add(event.Name)
@@ -229,12 +231,22 @@ func run(flags *cmdFlags) {
 					break
 				}
 			case fsnotify.Remove:
-				os.RemoveAll("backend/public/build")
-				buildOnlyFrontendChan <- true
-				buildOnlyFrontendChan <- false
-				break
+				fmt.Println("file removed! ", event.Name, " | ", event.Op)
 
+				if strings.HasSuffix(event.Name, ".go") {
+					// TODO: think about sane way to handle deletion of go files?
+					// messes up the hot refresh for some reason?
+					// also ran when GoImports is used, which causes undefined behavior
+					fmt.Println("is go file, skipping")
+				} else {
+					os.RemoveAll("backend/public/build")
+					buildOnlyFrontendChan <- true
+					buildOnlyFrontendChan <- false
+					break
+				}
+				fallthrough
 			default:
+				fmt.Println("default action! ", event.Name, " | ", event.Op)
 				// determines whether or not to compile frontend or backend
 				buildOnlyFrontendChan <- strings.HasPrefix(event.Name, "frontend/")
 			}

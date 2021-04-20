@@ -252,7 +252,7 @@ func getLocalAddr() string {
 		// must not have internet connection
 		netInts, err := net.Interfaces()
 		if err != nil {
-			fmt.Println("Could not find local IP address, only hosting on localhost")
+			fmt.Println("Could not find any network interfaces, only hosting on localhost")
 			return "localhost"
 		}
 
