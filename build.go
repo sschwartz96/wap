@@ -97,7 +97,7 @@ func compileFrontEnd() ([]Page, error) {
 			underscoreName := strings.ToLower(strings.ReplaceAll(pName, "/", "_"))
 			pages = append(pages, Page{
 				Title:   filepath.Clean(getNameFromPath(path)),
-				URLPath: "/" + strings.Replace(strings.ToLower(pName), "index", "", 1),
+				URLPath: "/" + strings.TrimSuffix(strings.Replace(strings.ToLower(pName), "index", "", 1), "/"),
 				JS:      "/public/build/" + underscoreName + ".js",
 				CSS:     "/public/build/" + underscoreName + ".css",
 
@@ -236,7 +236,7 @@ func generateGoCode(run, dev bool, pages []Page) error {
 // getNameOfPath removes pwd path and .svelte to return the logical part of the path
 func getNameOfPath(s string, pwd string) string {
 	return strings.Split(
-		strings.Replace(s, pwd+"/", "", 1),
+		strings.Replace(s, pwd+"/", "", 1), // replaces parent directory
 		".",
 	)[0]
 }
