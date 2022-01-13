@@ -374,6 +374,7 @@ func createHandler(pageData Page) httprouter.Handle {
 var htmlTemplate =` + "`" + `<html>
 <head>
   <meta charset="utf-8">
+  <style>body { margin: 0; }</style>
   [[ .WebsocketScript ]]
 
   <title>{{ .Title }}</title>

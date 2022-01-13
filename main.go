@@ -55,7 +55,13 @@ func checkGoVersion() {
 	if err != nil {
 		fmtFataln("error getting command output:", err)
 	}
-	minor, err := strconv.Atoi(strings.Split(string(goCheckOut), ".")[1])
+	verStrSplit := strings.Split(string(goCheckOut), ".")
+	index := 0
+	if len(verStrSplit) == 3 {
+		index = 1
+	}
+	verStr := verStrSplit[index]
+	minor, err := strconv.Atoi(strings.Split(verStr, " ")[0])
 	if err != nil {
 		fmtFatalf("error finding go minor version: %v\n", err)
 	}
@@ -208,7 +214,7 @@ func run(flags *cmdFlags) {
 		// TODO: revisit this when build times exceed a second???
 		// put fw.Events in a separate go routine and allow events to pass through
 		// until preivous build is complete. Another channel???
-		if time.Now().Sub(elapsed) < time.Second {
+		if time.Since(elapsed) < time.Second {
 			continue
 		}
 		elapsed = time.Now()
@@ -219,8 +225,13 @@ func run(flags *cmdFlags) {
 			// new file or directory has been created
 			case fsnotify.Create:
 				fmt.Println("file created! ", event.Name, " | ", event.Op)
+				fileInfo, err := os.Stat(event.Name)
+				if err != nil {
+					fmt.Println("error os.Stat(event.Name): %w", err)
+					continue
+				}
 				// add the new directory to the file watcher
-				if fileInfo, _ := os.Stat(event.Name); fileInfo.IsDir() {
+				if fileInfo.IsDir() {
 					fw.Add(event.Name)
 				}
 
